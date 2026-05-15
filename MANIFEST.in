@@ -1,0 +1,4 @@
+include README.md
+recursive-include ckanext/cstoolbox/templates *.html
+recursive-include ckanext/cstoolbox/public *
+recursive-include ckanext/cstoolbox/logic *.py

@@ -1,0 +1,109 @@
+{% if error_summary %}
+<div class="sf-alert alert-danger">
+  <h4><i class="fa fa-exclamation-triangle"></i> {{ _('Please correct the following:') }}</h4>
+  <ul>
+    {% for field, msg in error_summary.items() %}
+      <li><strong>{{ field }}:</strong> {{ msg }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<fieldset class="sf-section">
+  <legend><i class="fa fa-info-circle"></i> {{ _('Collection details') }}</legend>
+  <div class="sf-body">
+    <div class="form-group">
+      <label class="control-label">{{ _('Title') }} <span style="color:#dc3545;">*</span></label>
+      <input type="text" name="title" value="{{ data.title or '' }}" class="form-control" required />
+    </div>
+    <div class="form-group">
+      <label class="control-label">{{ _('Description') }}</label>
+      <textarea name="description" rows="3" class="form-control">{{ data.description or '' }}</textarea>
+    </div>
+    <div class="cst-form-row">
+      <div class="form-group">
+        <label class="control-label">{{ _('URL slug') }}</label>
+        <input type="text" name="name" value="{{ data.name or '' }}" class="form-control"
+               placeholder="{{ _('auto-generated from title') }}" />
+      </div>
+      <div class="form-group">
+        <label class="control-label">{{ _('Owner organization') }}</label>
+        <select name="owner_org" class="form-control">
+          <option value="">— {{ _('none') }} —</option>
+          {% for org in organizations %}
+            <option value="{{ org.id }}" {{ 'selected' if data.owner_org == org.id }}>
+              {{ org.display_name or org.title }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+</fieldset>
+
+<fieldset class="sf-section">
+  <legend><i class="fa fa-cogs"></i> {{ _('Export defaults') }}</legend>
+  <div class="sf-body">
+    <div class="cst-form-row">
+      <div class="form-group">
+        <label class="control-label">{{ _('Default time range') }}</label>
+        <select name="time_range" class="form-control">
+          <option value="1m"  {{ 'selected' if data.time_range == '1m' }}>{{ _('1 month') }}</option>
+          <option value="3m"  {{ 'selected' if data.time_range == '3m' }}>{{ _('3 months') }}</option>
+          <option value="6m"  {{ 'selected' if data.time_range == '6m' }}>{{ _('6 months') }}</option>
+          <option value="1y"  {{ 'selected' if data.time_range == '1y' }}>{{ _('1 year') }}</option>
+          <option value="all" {{ 'selected' if data.time_range == 'all' }}>{{ _('All time') }}</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="control-label">{{ _('GeoJSON mode') }}</label>
+        <select name="geojson_mode" class="form-control">
+          <option value="expanded" {{ 'selected' if data.geojson_mode == 'expanded' }}>
+            {{ _('Expanded — one feature per observation (Terria time slider)') }}
+          </option>
+          <option value="compact" {{ 'selected' if data.geojson_mode == 'compact' }}>
+            {{ _('Compact — one feature per site with series') }}
+          </option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="control-label">{{ _('Time property name') }}</label>
+      <input type="text" name="time_property" value="{{ data.time_property or 'date' }}" class="form-control" />
+      <p class="help-text">{{ _('Used as the timeProperty when loading the GeoJSON into TerriaJS.') }}</p>
+    </div>
+  </div>
+</fieldset>
+
+<fieldset class="sf-section">
+  <legend><i class="fa fa-flask"></i> {{ _('Surveys') }}</legend>
+  <div class="sf-body">
+    {% set selected_ids = (data.survey_ids if data.survey_ids is iterable and not data.survey_ids is string else []) %}
+    {% if all_surveys %}
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:0.5rem;">
+        {% for s in all_surveys %}
+          <label style="display:flex; gap:0.5rem; padding:0.5rem 0.7rem; background:#fafdff; border:1px solid #e2e8ef; border-radius:8px;">
+            <input type="checkbox" name="survey_ids" value="{{ s.id }}"
+                   {{ 'checked' if s.id in selected_ids
+                      or (data.surveys and s.id in (data.surveys | map(attribute='survey_id') | list)) }} />
+            <span>
+              <strong>{{ s.title }}</strong><br />
+              <small style="color:#6c757d;">{{ s.schema }}.{{ s.view_name }} · {{ h.cstoolbox_database_label(s.database) }}</small>
+            </span>
+          </label>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-muted">{{ _('No approved surveys available yet. Register one first.') }}</p>
+    {% endif %}
+  </div>
+</fieldset>
+
+<div class="cst-form-actions">
+  <a href="{{ h.url_for('cstoolbox_collections.coll_index') }}" class="btn btn-default">
+    <i class="fa fa-arrow-left"></i> {{ _('Cancel') }}
+  </a>
+  <button type="submit" class="btn cst-btn-primary">
+    <i class="fa fa-save"></i> {{ _('Save') }}
+  </button>
+</div>

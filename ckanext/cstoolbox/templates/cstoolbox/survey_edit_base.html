@@ -1,0 +1,161 @@
+{% extends "cstoolbox/base.html" %}
+
+{% block subtitle %}
+  {% if is_edit %}{{ _('Edit Survey') }}{% else %}{{ _('Register Survey') }}{% endif %}
+{% endblock %}
+
+{% block primary_content_inner %}
+  <div class="cst-page-header">
+    <div>
+      <h1>
+        <i class="fa fa-{% if is_edit %}pencil{% else %}plus{% endif %}"></i>
+        {% if is_edit %}{{ _('Edit Survey') }}{% else %}{{ _('Register a new CST Survey') }}{% endif %}
+      </h1>
+      <p class="cst-page-subtitle">
+        {{ _('Pick a database, choose a view, detect its measurement columns, then publish a curated dashboard.') }}
+      </p>
+    </div>
+  </div>
+
+  <form method="post" action="{{ form_action }}" class="cst-form" id="cstSurveyForm">
+    {% include 'cstoolbox/survey_form.html' %}
+  </form>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script>
+    (function () {
+      var form = document.getElementById('cstSurveyForm');
+      if (!form) return;
+
+      var dbSelect = form.querySelector('[name=database]');
+      var viewSelect = form.querySelector('[name=view_selector]');
+      var schemaInput = form.querySelector('[name=schema]');
+      var viewNameInput = form.querySelector('[name=view_name]');
+      var detectBtn = form.querySelector('#cstDetectBtn');
+      var statusBox = form.querySelector('#cstDetectStatus');
+      var colsContainer = form.querySelector('#cstColumnsContainer');
+      var dateField = form.querySelector('[name=date_field]');
+      var latField = form.querySelector('[name=lat_field]');
+      var lonField = form.querySelector('[name=lon_field]');
+      var siteField = form.querySelector('[name=site_field]');
+      var titleInput = form.querySelector('[name=title]');
+
+      function setStatus(msg, cls) {
+        if (!statusBox) return;
+        statusBox.textContent = msg;
+        statusBox.classList.remove('is-error', 'is-success');
+        if (cls) statusBox.classList.add(cls);
+        statusBox.classList.add('is-visible');
+      }
+
+      function clearStatus() {
+        if (!statusBox) return;
+        statusBox.classList.remove('is-visible', 'is-error', 'is-success');
+        statusBox.textContent = '';
+      }
+
+      function loadViews() {
+        if (!dbSelect || !viewSelect) return;
+        var db = dbSelect.value;
+        viewSelect.innerHTML = '<option value="">' + (db ? 'Loading…' : '— pick a database first —') + '</option>';
+        if (!db) return;
+        fetch('/cstoolbox-survey/api/views?database=' + encodeURIComponent(db), {credentials: 'same-origin'})
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data.error) { setStatus('Error: ' + JSON.stringify(data.error), 'is-error'); return; }
+            var views = data.views || [];
+            viewSelect.innerHTML = '<option value="">— pick a view —</option>';
+            views.forEach(function (v) {
+              var opt = document.createElement('option');
+              opt.value = v.table_schema + '|' + v.table_name;
+              opt.textContent = v.table_schema + '.' + v.table_name;
+              opt.dataset.schema = v.table_schema;
+              opt.dataset.view = v.table_name;
+              viewSelect.appendChild(opt);
+            });
+          })
+          .catch(function (e) { setStatus('Could not load views: ' + e, 'is-error'); });
+      }
+
+      function syncSchemaView() {
+        if (!viewSelect) return;
+        var opt = viewSelect.selectedOptions[0];
+        if (!opt || !opt.dataset.schema) {
+          if (schemaInput) schemaInput.value = '';
+          if (viewNameInput) viewNameInput.value = '';
+          return;
+        }
+        if (schemaInput) schemaInput.value = opt.dataset.schema;
+        if (viewNameInput) viewNameInput.value = opt.dataset.view;
+        if (titleInput && !titleInput.value) titleInput.value = opt.dataset.view;
+      }
+
+      function classRowFor(kind) {
+        if (kind === 'numeric') return 'cst-col-row is-numeric';
+        if (kind === 'meta') return 'cst-col-row is-meta';
+        return 'cst-col-row is-categorical';
+      }
+
+      function renderColumns(columns) {
+        if (!colsContainer) return;
+        colsContainer.innerHTML = '';
+        columns.forEach(function (c, i) {
+          var row = document.createElement('div');
+          row.className = classRowFor(c.kind);
+          row.innerHTML =
+            '<label><input type="checkbox" name="col_include_' + i + '"' + (c.suggested_for_chart ? ' checked' : '') + ' /></label>' +
+            '<div><code>' + c.column_name + '</code>' +
+              '<input type="hidden" name="col_name_' + i + '" value="' + c.column_name + '" />' +
+              '<div class="col-kind">' + (c.kind || '') + (c.sample !== null && c.sample !== undefined ? ' · ex: ' + String(c.sample).slice(0, 30) : '') + '</div>' +
+            '</div>' +
+            '<div><input type="text" name="col_label_' + i + '" value="' + (c.label || '') + '" placeholder="Display label" /></div>' +
+            '<div><input type="text" name="col_unit_' + i + '" value="' + (c.unit || '') + '" placeholder="Unit" /></div>' +
+            '<div><select name="col_chart_' + i + '"><option value="line">Line</option><option value="bar">Bar</option><option value="area">Area</option></select></div>';
+          colsContainer.appendChild(row);
+        });
+      }
+
+      function detect() {
+        var db = dbSelect && dbSelect.value;
+        var schema = schemaInput && schemaInput.value;
+        var view = viewNameInput && viewNameInput.value;
+        if (!db || !schema || !view) {
+          setStatus('Pick a database and a view first.', 'is-error');
+          return;
+        }
+        setStatus('Sampling view data from Quartex…');
+        detectBtn.disabled = true;
+        fetch('/cstoolbox-survey/api/columns?database=' + encodeURIComponent(db) +
+              '&schema=' + encodeURIComponent(schema) + '&view=' + encodeURIComponent(view),
+              {credentials: 'same-origin'})
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            detectBtn.disabled = false;
+            if (data.error) { setStatus('Error: ' + JSON.stringify(data.error), 'is-error'); return; }
+            renderColumns(data.columns || []);
+            if (dateField && data.recommended_date_field) dateField.value = data.recommended_date_field;
+            if (latField && data.recommended_lat_field) latField.value = data.recommended_lat_field;
+            if (lonField && data.recommended_lon_field) lonField.value = data.recommended_lon_field;
+            if (siteField && data.recommended_site_field) siteField.value = data.recommended_site_field;
+            setStatus('Detected ' + (data.columns || []).length + ' columns. Tick the ones to chart and edit labels as needed.', 'is-success');
+          })
+          .catch(function (e) {
+            detectBtn.disabled = false;
+            setStatus('Detection failed: ' + e, 'is-error');
+          });
+      }
+
+      if (dbSelect) dbSelect.addEventListener('change', function () { loadViews(); clearStatus(); });
+      if (viewSelect) viewSelect.addEventListener('change', syncSchemaView);
+      if (detectBtn) detectBtn.addEventListener('click', function (ev) { ev.preventDefault(); detect(); });
+
+      // Pre-populate on edit
+      if (dbSelect && dbSelect.value) {
+        loadViews();
+        // After views load, the user can re-pick — keep schema/view fields editable.
+      }
+    })();
+  </script>
+{% endblock %}

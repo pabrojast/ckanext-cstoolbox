@@ -1,0 +1,58 @@
+{% extends "cstoolbox/base.html" %}
+
+{% block subtitle %}{{ _('CST Collections') }}{% endblock %}
+
+{% block primary_content_inner %}
+  <div class="cst-page-header">
+    <div>
+      <h1><i class="fa fa-folder-open"></i> {{ _('CST Collections') }}</h1>
+      <p class="cst-page-subtitle">
+        {{ _('Group several surveys to publish a single combined GeoJSON or CSV download.') }}
+      </p>
+    </div>
+    <div class="cst-actions">
+      <a href="{{ h.url_for('cstoolbox_surveys.index') }}" class="btn btn-default">
+        <i class="fa fa-flask"></i> {{ _('Surveys') }}
+      </a>
+      {% if h.check_access('cstoolbox_collection_create') %}
+        <a href="{{ h.url_for('cstoolbox_collections.coll_new') }}" class="btn cst-btn-primary">
+          <i class="fa fa-plus"></i> {{ _('New Collection') }}
+        </a>
+      {% endif %}
+    </div>
+  </div>
+
+  <form class="cst-filters" method="get" action="{{ h.url_for('cstoolbox_collections.coll_index') }}">
+    <div class="form-group">
+      <input type="text" name="q" class="form-control" placeholder="{{ _('Search collections...') }}" value="{{ q }}" />
+    </div>
+    <button type="submit" class="btn btn-default"><i class="fa fa-search"></i> {{ _('Filter') }}</button>
+  </form>
+
+  {% if collections %}
+    <p class="text-muted">{{ _('Showing {count} collection(s)').format(count=count) }}</p>
+    {% for c in collections %}
+      <div class="cst-card">
+        <div class="cst-card-main">
+          <h3><a href="{{ h.url_for('cstoolbox_collections.coll_show', name=c.name) }}">{{ c.title }}</a></h3>
+          <div class="cst-card-meta">
+            <span><i class="fa fa-flask"></i> {{ c.surveys | length }} {{ _('survey(s)') }}</span>
+            <span><i class="fa fa-clock-o"></i> {{ h.cstoolbox_time_range_label(c.time_range) }}</span>
+          </div>
+          {% if c.description %}<p style="margin-top:0.5rem; color:#555;">{{ c.description }}</p>{% endif %}
+        </div>
+        <div class="cst-card-actions">
+          <a href="{{ h.url_for('cstoolbox_collections.coll_dashboard', name=c.name) }}" class="btn cst-btn-primary">
+            <i class="fa fa-tachometer"></i> {{ _('Dashboard') }}
+          </a>
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="cst-empty">
+      <i class="fa fa-folder-open"></i>
+      <h3>{{ _('No collections yet') }}</h3>
+      <p>{{ _('Create a collection to bundle multiple surveys into a single download.') }}</p>
+    </div>
+  {% endif %}
+{% endblock %}

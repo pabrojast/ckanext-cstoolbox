@@ -1,0 +1,201 @@
+{% set is_sysadmin = h.cstoolbox_is_sysadmin() %}
+
+{% if error_summary %}
+<div class="sf-alert alert-danger">
+  <h4><i class="fa fa-exclamation-triangle"></i> {{ _('Please correct the following:') }}</h4>
+  <ul>
+    {% for field, msg in error_summary.items() %}
+      <li><strong>{{ field }}:</strong> {{ msg }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{# ── Step 1 — pick the upstream view ─────────────────────── #}
+<fieldset class="sf-section">
+  <legend><i class="fa fa-database"></i> {{ _('Upstream view') }}</legend>
+  <div class="sf-body">
+
+    <div class="cst-form-row">
+      <div class="form-group">
+        <label class="control-label">{{ _('Database') }} <span style="color:#dc3545;">*</span></label>
+        <select name="database" class="form-control" required>
+          <option value="">— {{ _('select') }} —</option>
+          {% for db_value, db_label in h.cstoolbox_allowed_databases() %}
+            <option value="{{ db_value }}" {{ 'selected' if data.database == db_value }}>{{ db_label }} ({{ db_value }})</option>
+          {% endfor %}
+        </select>
+        {% if errors and errors.database %}<span class="error-block">{{ errors.database | join('; ') }}</span>{% endif %}
+      </div>
+      <div class="form-group">
+        <label class="control-label">{{ _('View') }} <span style="color:#dc3545;">*</span></label>
+        <select name="view_selector" class="form-control">
+          {% if data.schema and data.view_name %}
+            <option value="{{ data.schema }}|{{ data.view_name }}" selected>{{ data.schema }}.{{ data.view_name }}</option>
+          {% else %}
+            <option value="">— {{ _('pick a database first') }} —</option>
+          {% endif %}
+        </select>
+        <p class="help-text">
+          {{ _('Views are listed live from the CST Toolbox API. You can also fill <code>schema</code> and <code>view_name</code> below manually.') }}
+        </p>
+      </div>
+    </div>
+
+    <div class="cst-form-row">
+      <div class="form-group">
+        <label class="control-label">{{ _('Schema (auto-filled)') }}</label>
+        <input type="text" name="schema" value="{{ data.schema or '' }}" class="form-control" required />
+        {% if errors and errors.schema %}<span class="error-block">{{ errors.schema | join('; ') }}</span>{% endif %}
+      </div>
+      <div class="form-group">
+        <label class="control-label">{{ _('View name (auto-filled)') }}</label>
+        <input type="text" name="view_name" value="{{ data.view_name or '' }}" class="form-control" required />
+        {% if errors and errors.view_name %}<span class="error-block">{{ errors.view_name | join('; ') }}</span>{% endif %}
+      </div>
+    </div>
+
+  </div>
+</fieldset>
+
+{# ── Step 2 — detect columns ─────────────────────────────── #}
+<fieldset class="sf-section">
+  <legend><i class="fa fa-bar-chart"></i> {{ _('Measurements to chart') }}</legend>
+  <div class="sf-body">
+    <p style="color:#6c757d; margin: 0 0 0.6rem;">
+      {{ _('Click "Detect columns" to sample one observation from the view and pre-fill the columns to chart. You can edit display labels and units afterward.') }}
+    </p>
+    <button id="cstDetectBtn" class="btn cst-btn-primary" type="button">
+      <i class="fa fa-magic"></i> {{ _('Detect columns') }}
+    </button>
+    <div id="cstDetectStatus" class="cst-detect-status"></div>
+
+    <div class="cst-col-picker" id="cstColumnsContainer">
+      {# Server-side fallback: render currently-configured columns if editing #}
+      {% if data.columns %}
+        {% for c in data.columns %}
+          <div class="cst-col-row is-numeric">
+            <label><input type="checkbox" name="col_include_{{ loop.index0 }}" checked /></label>
+            <div>
+              <code>{{ c.column_name }}</code>
+              <input type="hidden" name="col_name_{{ loop.index0 }}" value="{{ c.column_name }}" />
+              <div class="col-kind">{{ _('saved') }}</div>
+            </div>
+            <div><input type="text" name="col_label_{{ loop.index0 }}" value="{{ c.label or '' }}" placeholder="{{ _('Display label') }}" /></div>
+            <div><input type="text" name="col_unit_{{ loop.index0 }}" value="{{ c.unit or '' }}" placeholder="{{ _('Unit') }}" /></div>
+            <div>
+              <select name="col_chart_{{ loop.index0 }}">
+                <option value="line"  {{ 'selected' if c.chart_type == 'line' }}>Line</option>
+                <option value="bar"   {{ 'selected' if c.chart_type == 'bar' }}>Bar</option>
+                <option value="area"  {{ 'selected' if c.chart_type == 'area' }}>Area</option>
+              </select>
+            </div>
+          </div>
+        {% endfor %}
+      {% endif %}
+    </div>
+  </div>
+</fieldset>
+
+{# ── Step 3 — presentation metadata ───────────────────────── #}
+<fieldset class="sf-section">
+  <legend><i class="fa fa-info-circle"></i> {{ _('Presentation') }}</legend>
+  <div class="sf-body">
+
+    <div class="form-group">
+      <label class="control-label">{{ _('Title') }} <span style="color:#dc3545;">*</span></label>
+      <input type="text" name="title" value="{{ data.title or '' }}" class="form-control" required />
+      {% if errors and errors.title %}<span class="error-block">{{ errors.title | join('; ') }}</span>{% endif %}
+    </div>
+
+    <div class="form-group">
+      <label class="control-label">{{ _('Description') }}</label>
+      <textarea name="description" rows="3" class="form-control">{{ data.description or '' }}</textarea>
+    </div>
+
+    <div class="cst-form-row">
+      <div class="form-group">
+        <label class="control-label">{{ _('URL slug') }}</label>
+        <input type="text" name="name" value="{{ data.name or '' }}" class="form-control"
+               placeholder="{{ _('auto-generated from title') }}" />
+        <p class="help-text">{{ _('Lower-case letters, digits, and hyphens.') }}</p>
+        {% if errors and errors.name %}<span class="error-block">{{ errors.name | join('; ') }}</span>{% endif %}
+      </div>
+      <div class="form-group">
+        <label class="control-label">{{ _('Owner organization') }}</label>
+        <select name="owner_org" class="form-control">
+          <option value="">— {{ _('none') }} —</option>
+          {% for org in organizations %}
+            <option value="{{ org.id }}" {{ 'selected' if data.owner_org == org.id }}>
+              {{ org.display_name or org.title }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+  </div>
+</fieldset>
+
+{# ── Step 4 — row layout & defaults ───────────────────────── #}
+<fieldset class="sf-section">
+  <legend><i class="fa fa-cogs"></i> {{ _('Row layout') }}</legend>
+  <div class="sf-body">
+
+    <div class="cst-form-row">
+      <div class="form-group">
+        <label class="control-label">{{ _('Date field') }}</label>
+        <input type="text" name="date_field" value="{{ data.date_field or 'obs_date' }}" class="form-control" />
+        <p class="help-text">{{ _('Column the upstream API uses for date filtering. Most CST views accept <code>obs_date</code> or <code>sample_date</code>.') }}</p>
+      </div>
+      <div class="form-group">
+        <label class="control-label">{{ _('Default time range') }}</label>
+        <select name="default_time_range" class="form-control">
+          <option value="1m" {{ 'selected' if data.default_time_range == '1m' }}>{{ _('1 month') }}</option>
+          <option value="3m" {{ 'selected' if data.default_time_range == '3m' }}>{{ _('3 months') }}</option>
+          <option value="6m" {{ 'selected' if data.default_time_range == '6m' }}>{{ _('6 months') }}</option>
+          <option value="1y" {{ 'selected' if data.default_time_range == '1y' }}>{{ _('1 year') }}</option>
+          <option value="all" {{ 'selected' if data.default_time_range == 'all' }}>{{ _('All time') }}</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="cst-form-row">
+      <div class="form-group">
+        <label class="control-label">{{ _('Latitude field') }}</label>
+        <input type="text" name="lat_field" value="{{ data.lat_field or 'latitude' }}" class="form-control" />
+      </div>
+      <div class="form-group">
+        <label class="control-label">{{ _('Longitude field') }}</label>
+        <input type="text" name="lon_field" value="{{ data.lon_field or 'longitude' }}" class="form-control" />
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="control-label">{{ _('Site/grouping field') }}</label>
+      <input type="text" name="site_field" value="{{ data.site_field or 'site_name' }}" class="form-control" />
+      <p class="help-text">{{ _('Used to group observations into clickable points on the map.') }}</p>
+    </div>
+
+  </div>
+</fieldset>
+
+<div class="cst-form-actions">
+  <a href="{{ h.url_for('cstoolbox_surveys.index') }}" class="btn btn-default">
+    <i class="fa fa-arrow-left"></i> {{ _('Cancel') }}
+  </a>
+  <div class="cst-submit-group">
+    {% if is_sysadmin %}
+      <button type="submit" name="submission_action" value="publish" class="btn btn-success">
+        <i class="fa fa-check"></i> {{ _('Save & publish') }}
+      </button>
+    {% else %}
+      <button type="submit" name="submission_action" value="submit" class="btn cst-btn-primary">
+        <i class="fa fa-paper-plane"></i> {{ _('Submit for review') }}
+      </button>
+    {% endif %}
+    <button type="submit" name="submission_action" value="draft" class="btn btn-default">
+      <i class="fa fa-save"></i> {{ _('Save as draft') }}
+    </button>
+  </div>
+</div>

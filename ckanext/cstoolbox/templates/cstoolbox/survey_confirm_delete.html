@@ -1,0 +1,26 @@
+{% extends "cstoolbox/base.html" %}
+
+{% block subtitle %}{{ _('Delete Survey') }}{% endblock %}
+
+{% block primary_content_inner %}
+<div class="cst-confirm">
+  <i class="fa fa-exclamation-triangle cst-confirm-icon"></i>
+  <h2>{{ _('Delete this survey?') }}</h2>
+  <p>
+    {{ _('You are about to permanently remove the registered survey') }}
+    <strong>{{ survey.title }}</strong>
+    ({{ survey.schema }}.{{ survey.view_name }}).
+  </p>
+  <p style="color:#6c757d; font-size:0.9rem;">
+    {{ _('This only removes the CKAN registration — the upstream Quartex view is left untouched.') }}
+  </p>
+  <form method="post" action="{{ h.url_for('cstoolbox_surveys.delete', name=survey.name) }}" class="btn-group">
+    <a href="{{ h.url_for('cstoolbox_surveys.show', name=survey.name) }}" class="btn btn-default">
+      <i class="fa fa-times"></i> {{ _('Cancel') }}
+    </a>
+    <button type="submit" class="btn btn-danger">
+      <i class="fa fa-trash"></i> {{ _('Yes, delete it') }}
+    </button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,101 @@
+{% extends "cstoolbox/base.html" %}
+
+{% block subtitle %}{{ survey.title }} — {{ _('CST Survey') }}{% endblock %}
+
+{% block primary_content_inner %}
+  <div class="cst-page-header">
+    <div>
+      <h1><i class="fa fa-flask"></i> {{ survey.title }}</h1>
+      <p class="cst-page-subtitle">
+        <span class="badge badge-info">{{ h.cstoolbox_database_label(survey.database) }}</span>
+        <span class="badge {{ h.cstoolbox_submission_badge_class(survey.submission_status) }}">
+          {{ h.cstoolbox_submission_status_label(survey.submission_status) }}
+        </span>
+        &nbsp; <code>{{ survey.schema }}.{{ survey.view_name }}</code>
+      </p>
+    </div>
+    <div class="cst-actions">
+      <a href="{{ h.url_for('cstoolbox_surveys.dashboard', name=survey.name) }}" class="btn cst-btn-primary">
+        <i class="fa fa-tachometer"></i> {{ _('Open Dashboard') }}
+      </a>
+      {% if h.check_access('cstoolbox_survey_update', {'id': survey.id}) %}
+        <a href="{{ h.url_for('cstoolbox_surveys.edit', name=survey.name) }}" class="btn btn-default">
+          <i class="fa fa-pencil"></i> {{ _('Edit') }}
+        </a>
+      {% endif %}
+      {% if h.check_access('cstoolbox_survey_delete', {'id': survey.id}) %}
+        <a href="{{ h.url_for('cstoolbox_surveys.delete', name=survey.name) }}" class="btn btn-danger">
+          <i class="fa fa-trash"></i> {{ _('Delete') }}
+        </a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="cst-detail-grid">
+    <div class="cst-detail-main">
+      {% if survey.description %}
+        <div class="cst-callout"><strong>{{ _('About') }}:</strong> {{ survey.description }}</div>
+      {% endif %}
+
+      <div class="cst-detail-section">
+        <h2><i class="fa fa-database"></i> {{ _('Upstream view') }}</h2>
+        <table class="cst-detail-table">
+          <tr><th>{{ _('Database') }}</th><td><code>{{ survey.database }}</code></td></tr>
+          <tr><th>{{ _('Schema') }}</th><td><code>{{ survey.schema }}</code></td></tr>
+          <tr><th>{{ _('View') }}</th><td><code>{{ survey.view_name }}</code></td></tr>
+          <tr><th>{{ _('Date field') }}</th><td><code>{{ survey.date_field }}</code></td></tr>
+          <tr><th>{{ _('Geometry fields') }}</th><td><code>{{ survey.lat_field }}</code>, <code>{{ survey.lon_field }}</code></td></tr>
+          <tr><th>{{ _('Site field') }}</th><td><code>{{ survey.site_field }}</code></td></tr>
+          <tr><th>{{ _('Default time range') }}</th><td>{{ h.cstoolbox_time_range_label(survey.default_time_range) }}</td></tr>
+        </table>
+      </div>
+
+      <div class="cst-detail-section">
+        <h2><i class="fa fa-bar-chart"></i> {{ _('Measurements to chart') }}</h2>
+        {% if survey.columns %}
+          <table class="cst-detail-table">
+            <thead>
+              <tr><th>{{ _('Column') }}</th><th>{{ _('Display label') }}</th><th>{{ _('Unit') }}</th><th>{{ _('Chart') }}</th></tr>
+            </thead>
+            <tbody>
+              {% for c in survey.columns %}
+                <tr>
+                  <td><code>{{ c.column_name }}</code></td>
+                  <td>{{ c.label or h.cstoolbox_humanize(c.column_name) }}</td>
+                  <td>{{ c.unit or '—' }}</td>
+                  <td>{{ h.cstoolbox_chart_type_label(c.chart_type) }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="text-muted">{{ _('No columns configured. The dashboard will auto-detect numeric columns from the first observation.') }}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="cst-detail-side">
+      <div class="cst-detail-section">
+        <h2><i class="fa fa-download"></i> {{ _('Downloads') }}</h2>
+        <div class="cst-side-actions">
+          <a class="btn btn-default" href="{{ h.url_for('cstoolbox_surveys.geojson', name=survey.name) }}" target="_blank">
+            <i class="fa fa-globe"></i> {{ _('GeoJSON (default range)') }}
+          </a>
+          <a class="btn btn-default" href="{{ h.url_for('cstoolbox_surveys.csv_export', name=survey.name) }}" target="_blank">
+            <i class="fa fa-file-text-o"></i> {{ _('CSV (default range)') }}
+          </a>
+          <a class="btn btn-default" href="{{ h.url_for('cstoolbox_surveys.data', name=survey.name) }}" target="_blank">
+            <i class="fa fa-code"></i> {{ _('Raw JSON') }}
+          </a>
+        </div>
+      </div>
+
+      <div class="cst-detail-section">
+        <h2><i class="fa fa-info-circle"></i> {{ _('Tip') }}</h2>
+        <p style="font-size:0.88rem; color:#555;">
+          {{ _('Filter the dashboard by date range to narrow the observation set, then re-use the same URL parameters on the GeoJSON/CSV endpoints to export the same slice.') }}
+        </p>
+      </div>
+    </div>
+  </div>
+{% endblock %}

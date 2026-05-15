@@ -1,0 +1,25 @@
+{% extends "cstoolbox/base.html" %}
+
+{% block subtitle %}{{ _('Delete Collection') }}{% endblock %}
+
+{% block primary_content_inner %}
+<div class="cst-confirm">
+  <i class="fa fa-exclamation-triangle cst-confirm-icon"></i>
+  <h2>{{ _('Delete this collection?') }}</h2>
+  <p>
+    {{ _('You are about to permanently remove the collection') }}
+    <strong>{{ collection.title }}</strong>.
+  </p>
+  <p style="color:#6c757d; font-size:0.9rem;">
+    {{ _('The surveys it groups will remain registered and accessible on their own.') }}
+  </p>
+  <form method="post" action="{{ h.url_for('cstoolbox_collections.coll_delete', name=collection.name) }}" class="btn-group">
+    <a href="{{ h.url_for('cstoolbox_collections.coll_show', name=collection.name) }}" class="btn btn-default">
+      <i class="fa fa-times"></i> {{ _('Cancel') }}
+    </a>
+    <button type="submit" class="btn btn-danger">
+      <i class="fa fa-trash"></i> {{ _('Yes, delete it') }}
+    </button>
+  </form>
+</div>
+{% endblock %}

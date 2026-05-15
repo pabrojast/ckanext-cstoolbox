@@ -1,0 +1,71 @@
+{% extends "cstoolbox/base.html" %}
+
+{% block subtitle %}{{ collection.title }} — {{ _('Collection') }}{% endblock %}
+
+{% block primary_content_inner %}
+  <div class="cst-page-header">
+    <div>
+      <h1><i class="fa fa-folder-open"></i> {{ collection.title }}</h1>
+      <p class="cst-page-subtitle">
+        <span class="badge badge-info">{{ collection.surveys_detail | length }} {{ _('survey(s)') }}</span>
+        · {{ h.cstoolbox_time_range_label(collection.time_range) }}
+        · {{ _('GeoJSON mode') }}: <code>{{ collection.geojson_mode }}</code>
+      </p>
+    </div>
+    <div class="cst-actions">
+      <a href="{{ dashboard_url }}" class="btn cst-btn-primary">
+        <i class="fa fa-tachometer"></i> {{ _('Dashboard') }}
+      </a>
+      {% if h.check_access('cstoolbox_collection_update', {'id': collection.id}) %}
+        <a href="{{ h.url_for('cstoolbox_collections.coll_edit', name=collection.name) }}" class="btn btn-default">
+          <i class="fa fa-pencil"></i> {{ _('Edit') }}
+        </a>
+      {% endif %}
+      {% if h.check_access('cstoolbox_collection_delete', {'id': collection.id}) %}
+        <a href="{{ h.url_for('cstoolbox_collections.coll_delete', name=collection.name) }}" class="btn btn-danger">
+          <i class="fa fa-trash"></i> {{ _('Delete') }}
+        </a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="cst-detail-grid">
+    <div class="cst-detail-main">
+      {% if collection.description %}
+        <div class="cst-callout">{{ collection.description }}</div>
+      {% endif %}
+
+      <div class="cst-detail-section">
+        <h2><i class="fa fa-flask"></i> {{ _('Surveys in this collection') }}</h2>
+        {% if collection.surveys_detail %}
+          <ul style="list-style:none; padding:0; margin:0;">
+            {% for s in collection.surveys_detail %}
+              <li style="padding:0.5rem 0; border-bottom:1px solid #f1f5f9;">
+                <a href="{{ h.url_for('cstoolbox_surveys.show', name=s.name) }}">
+                  <strong>{{ s.title }}</strong>
+                </a>
+                <small style="color:#6c757d;">— {{ s.schema }}.{{ s.view_name }} ({{ h.cstoolbox_database_label(s.database) }})</small>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted">{{ _('No surveys associated yet.') }}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="cst-detail-side">
+      <div class="cst-detail-section">
+        <h2><i class="fa fa-download"></i> {{ _('Downloads') }}</h2>
+        <div class="cst-side-actions">
+          <a class="btn btn-default" href="{{ geojson_url }}" target="_blank">
+            <i class="fa fa-globe"></i> {{ _('Combined GeoJSON') }}
+          </a>
+          <a class="btn btn-default" href="{{ csv_url }}" target="_blank">
+            <i class="fa fa-file-text-o"></i> {{ _('Combined CSV') }}
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

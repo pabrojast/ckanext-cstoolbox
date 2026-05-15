@@ -1,0 +1,76 @@
+{% extends "cstoolbox/base.html" %}
+
+{% block subtitle %}{{ collection.title }} — {{ _('Dashboard') }}{% endblock %}
+
+{% block styles %}
+  {{ super() }}
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+{% endblock %}
+
+{% block primary_content_inner %}
+<div class="cst-dash">
+  <div class="cst-dash-header">
+    <div class="cst-dash-title">
+      <h1><i class="fa fa-folder-open"></i> {{ collection.title }}</h1>
+      <div class="meta">
+        {{ collection.surveys_detail | length }} {{ _('survey(s)') }} ·
+        {{ h.cstoolbox_time_range_label(collection.time_range) }}
+      </div>
+    </div>
+    <div class="cst-dash-actions">
+      <a href="{{ h.url_for('cstoolbox_collections.coll_show', name=collection.name) }}" class="btn">
+        <i class="fa fa-info-circle"></i> {{ _('Details') }}
+      </a>
+      <a href="{{ geojson_url }}" class="btn" target="_blank" rel="noopener">
+        <i class="fa fa-globe"></i> {{ _('GeoJSON') }}
+      </a>
+      <a href="{{ csv_url }}" class="btn" target="_blank" rel="noopener">
+        <i class="fa fa-file-text-o"></i> {{ _('CSV') }}
+      </a>
+    </div>
+  </div>
+
+  <div class="cst-dash-panel">
+    <div class="cst-dash-panel-header">
+      <h3><i class="fa fa-map-marker"></i> {{ _('Combined observation map') }}</h3>
+      <span class="count" id="cstCollMapCount">—</span>
+    </div>
+    <div id="cstCollMap" style="height: 520px; border-radius: 8px;"></div>
+  </div>
+
+  <div class="cst-dash-panel">
+    <div class="cst-dash-panel-header">
+      <h3><i class="fa fa-bar-chart"></i> {{ _('Surveys included') }}</h3>
+    </div>
+    <div id="cstCollSurveys" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:0.7rem;">
+      {% for s in collection.surveys_detail %}
+        <a class="cst-card" href="{{ h.url_for('cstoolbox_surveys.dashboard', name=s.name) }}"
+           style="text-decoration:none; flex-direction:column; align-items:flex-start;">
+          <div class="cst-card-main">
+            <h3 style="font-size:1rem;">{{ s.title }}</h3>
+            <div class="cst-card-meta">
+              <span><i class="fa fa-database"></i> {{ s.schema }}.{{ s.view_name }}</span>
+              <span><i class="fa fa-bar-chart"></i> {{ s.columns | length }} {{ _('measurements') }}</span>
+            </div>
+          </div>
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script>
+    window.CST_COLL_CONFIG = {
+      geojsonUrl: {{ geojson_url | tojson }},
+      title: {{ collection.title | tojson }},
+    };
+  </script>
+  <script src="/cstoolbox-collection-dashboard.js"></script>
+{% endblock %}

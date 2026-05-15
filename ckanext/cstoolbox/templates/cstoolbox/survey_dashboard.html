@@ -1,0 +1,155 @@
+{% extends "cstoolbox/base.html" %}
+
+{% block subtitle %}{{ survey.title }} — {{ _('Dashboard') }}{% endblock %}
+
+{% block styles %}
+  {{ super() }}
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+{% endblock %}
+
+{% block primary_content_inner %}
+<div class="cst-dash">
+
+  <div class="cst-dash-header">
+    <div class="cst-dash-title">
+      <h1><i class="fa fa-tachometer"></i> {{ survey.title }}</h1>
+      <div class="meta">
+        <span class="badge badge-info">{{ h.cstoolbox_database_label(survey.database) }}</span>
+        <code>{{ survey.schema }}.{{ survey.view_name }}</code>
+        · {{ _('date field') }}: <code>{{ survey.date_field }}</code>
+      </div>
+    </div>
+    <div class="cst-dash-actions">
+      <a href="{{ h.url_for('cstoolbox_surveys.show', name=survey.name) }}" class="btn">
+        <i class="fa fa-info-circle"></i> {{ _('Details') }}
+      </a>
+      <a href="#" id="cstDownloadGeojson" class="btn" target="_blank" rel="noopener">
+        <i class="fa fa-globe"></i> {{ _('GeoJSON') }}
+      </a>
+      <a href="#" id="cstDownloadCsv" class="btn" target="_blank" rel="noopener">
+        <i class="fa fa-file-text-o"></i> {{ _('CSV') }}
+      </a>
+    </div>
+  </div>
+
+  <div class="cst-dash-filters">
+    <div class="cst-presets" id="cstPresets">
+      <button class="preset-btn" data-range="1w">1w</button>
+      <button class="preset-btn" data-range="1m">1m</button>
+      <button class="preset-btn" data-range="3m">3m</button>
+      <button class="preset-btn" data-range="6m">6m</button>
+      <button class="preset-btn" data-range="1y">1y</button>
+      <button class="preset-btn" data-range="all">{{ _('All') }}</button>
+    </div>
+    <div class="cst-range-pickers">
+      <label>{{ _('From') }}</label>
+      <input type="date" id="cstStart" />
+      <label>{{ _('To') }}</label>
+      <input type="date" id="cstEnd" />
+    </div>
+    <button class="cst-apply-btn" id="cstApply">
+      <i class="fa fa-refresh"></i> {{ _('Apply') }}
+    </button>
+  </div>
+
+  <div class="cst-stats" id="cstStats">
+    <div class="cst-stat-card">
+      <div class="label">{{ _('Observations') }}</div>
+      <div class="value" id="statObs">—</div>
+    </div>
+    <div class="cst-stat-card">
+      <div class="label">{{ _('Sites') }}</div>
+      <div class="value" id="statSites">—</div>
+    </div>
+    <div class="cst-stat-card">
+      <div class="label">{{ _('Member states') }}</div>
+      <div class="value" id="statStates">—</div>
+    </div>
+    <div class="cst-stat-card">
+      <div class="label">{{ _('Last sample') }}</div>
+      <div class="value muted" id="statLast">—</div>
+    </div>
+  </div>
+
+  {# Site / state filter chips — populated dynamically #}
+  <div class="cst-dash-panel" id="cstFacetsPanel" style="padding-top:0.7rem; padding-bottom:0.7rem;">
+    <div style="display:flex; flex-wrap:wrap; gap:1rem; align-items:center;">
+      <div>
+        <strong style="font-size:0.78rem; text-transform:uppercase; color:#6c757d; letter-spacing:0.05em;">
+          {{ _('Sites') }}
+        </strong>
+        <div class="cst-facet-row" id="cstSiteChips"></div>
+      </div>
+      <div>
+        <strong style="font-size:0.78rem; text-transform:uppercase; color:#6c757d; letter-spacing:0.05em;">
+          {{ _('Member states') }}
+        </strong>
+        <div class="cst-facet-row" id="cstStateChips"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cst-dash-main">
+    <div class="cst-dash-panel">
+      <div class="cst-dash-panel-header">
+        <h3><i class="fa fa-map-marker"></i> {{ _('Map') }}</h3>
+        <span class="count" id="cstMapCount">—</span>
+      </div>
+      <div id="cstMap"></div>
+    </div>
+
+    <div class="cst-dash-panel">
+      <div class="cst-dash-panel-header">
+        <h3><i class="fa fa-line-chart"></i> {{ _('Measurements over time') }}</h3>
+        <span class="count" id="cstChartsCount">—</span>
+      </div>
+      <div class="cst-charts-grid" id="cstChartsGrid">
+        <div class="cst-overlay" id="cstChartsEmpty">
+          <i class="fa fa-spinner fa-spin"></i> {{ _('Loading observations…') }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cst-table-section">
+    <div class="cst-table-header">
+      <h3><i class="fa fa-table"></i> {{ _('Data table') }}</h3>
+      <input type="text" class="cst-table-search" id="cstTableSearch" placeholder="{{ _('Search rows…') }}" />
+    </div>
+    <div class="cst-table-wrap">
+      <table class="cst-table" id="cstTable">
+        <thead><tr><th>—</th></tr></thead>
+        <tbody><tr><td style="text-align:center; color:#888; padding:1rem;">{{ _('Loading…') }}</td></tr></tbody>
+      </table>
+    </div>
+    <div class="cst-table-count" id="cstTableCount"></div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <script>
+    window.CST_DASH_CONFIG = {
+      dataUrl: {{ data_url | tojson }},
+      geojsonUrl: {{ geojson_url | tojson }},
+      csvUrl: {{ csv_url | tojson }},
+      survey: {{ survey | tojson }},
+      i18n: {
+        no_data: {{ _('No observations in this window.') | tojson }},
+        loading: {{ _('Loading…') | tojson }},
+        showing: {{ _('Showing') | tojson }},
+        of: {{ _('of') | tojson }},
+        rows: {{ _('rows') | tojson }},
+      }
+    };
+  </script>
+  <script src="/cstoolbox-survey-dashboard.js"></script>
+{% endblock %}

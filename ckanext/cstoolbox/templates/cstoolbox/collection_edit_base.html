@@ -1,0 +1,20 @@
+{% extends "cstoolbox/base.html" %}
+
+{% block subtitle %}
+  {% if is_edit %}{{ _('Edit Collection') }}{% else %}{{ _('New Collection') }}{% endif %}
+{% endblock %}
+
+{% block primary_content_inner %}
+  <div class="cst-page-header">
+    <div>
+      <h1>
+        <i class="fa fa-{% if is_edit %}pencil{% else %}plus{% endif %}"></i>
+        {% if is_edit %}{{ _('Edit Collection') }}{% else %}{{ _('New Collection') }}{% endif %}
+      </h1>
+    </div>
+  </div>
+
+  <form method="post" action="{{ form_action }}" class="cst-form">
+    {% include 'cstoolbox/collection_form.html' %}
+  </form>
+{% endblock %}
