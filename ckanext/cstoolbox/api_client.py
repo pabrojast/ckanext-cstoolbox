@@ -36,6 +36,13 @@ DEFAULT_DATABASES = ("odk_unesco", "odk_ihp", "odk_iw")
 REQUEST_TIMEOUT = 30
 CACHE_TTL_SECONDS = 30
 
+# Quartex's IIS occasionally returns transient 404s / 5xx for valid endpoints.
+# We retry these a couple of times with brief backoff before surfacing to the
+# user — the upstream usually recovers within a second or two.
+MAX_RETRIES = 3
+RETRY_BACKOFF_S = (0.5, 1.5)  # tried in order between attempts
+RETRYABLE_STATUS = {404, 408, 429, 500, 502, 503, 504}
+
 _cache = {}
 _cache_lock = threading.Lock()
 
@@ -91,48 +98,69 @@ def _format_dt_param(value):
 
 
 def _request(path, params):
-    """Run an authenticated GET against the CST Toolbox API."""
+    """Run an authenticated GET against the CST Toolbox API.
+
+    Retries on transient failures (HTTP 404/408/429/5xx or network errors)
+    up to MAX_RETRIES times. Persistent failures are raised as a
+    ``toolkit.ValidationError`` so blueprints can present a clean 4xx.
+    """
     token = _require_token()
     base = get_base_url()
     query = urllib.parse.urlencode([(k, v) for k, v in params if v not in (None, "")])
     url = "%s%s?%s" % (base, path, query) if query else "%s%s" % (base, path)
 
-    req = urllib.request.Request(url)
-    req.add_header("Authorization", "Bearer " + token)
-    req.add_header("Accept", "application/json")
+    last_err_msg = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        req = urllib.request.Request(url)
+        req.add_header("Authorization", "Bearer " + token)
+        req.add_header("Accept", "application/json")
 
-    log.debug("CST Toolbox request: %s", url)
+        log.debug("CST Toolbox request (attempt %d/%d): %s",
+                  attempt, MAX_RETRIES, url)
 
-    try:
-        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
-            body = resp.read().decode("utf-8")
-    except urllib.error.HTTPError as e:
-        raw = e.read().decode("utf-8", errors="replace") if e.fp else ""
-        log.error("CST Toolbox API error %s on %s: %s", e.code, url, raw[:300])
-        msg = "CST Toolbox API returned HTTP %s" % e.code
-        if raw:
+        try:
+            with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
+                body = resp.read().decode("utf-8")
             try:
-                parsed = json.loads(raw)
-                if isinstance(parsed, dict):
-                    msg += ": " + str(parsed.get("message") or parsed)[:300]
-                else:
-                    msg += ": " + str(parsed)[:300]
-            except (json.JSONDecodeError, ValueError):
-                msg += ": " + raw[:300]
-        raise toolkit.ValidationError({"cstoolbox": [msg]})
-    except urllib.error.URLError as e:
-        log.error("CST Toolbox connection error: %s", e.reason)
-        raise toolkit.ValidationError(
-            {"cstoolbox": ["Cannot connect to CST Toolbox API: %s" % e.reason]}
-        )
+                return json.loads(body)
+            except (json.JSONDecodeError, ValueError) as e:
+                log.error("CST Toolbox returned non-JSON: %s", body[:300])
+                last_err_msg = "non-JSON response: %s" % e
+                # Treat as transient — sometimes IIS sends an error page
+                # instead of JSON during a hiccup.
+        except urllib.error.HTTPError as e:
+            raw = e.read().decode("utf-8", errors="replace") if e.fp else ""
+            log.warning("CST Toolbox API %s on %s (attempt %d/%d): %s",
+                        e.code, url, attempt, MAX_RETRIES, raw[:200])
+            msg = "HTTP %s" % e.code
+            if raw:
+                try:
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, dict):
+                        msg += ": " + str(parsed.get("message") or parsed)[:300]
+                    else:
+                        msg += ": " + str(parsed)[:300]
+                except (json.JSONDecodeError, ValueError):
+                    msg += ": " + raw[:300]
+            last_err_msg = msg
+            if e.code not in RETRYABLE_STATUS:
+                break  # non-transient — fail fast
+        except urllib.error.URLError as e:
+            log.warning("CST Toolbox network error on %s (attempt %d/%d): %s",
+                        url, attempt, MAX_RETRIES, e.reason)
+            last_err_msg = "network error: %s" % e.reason
 
-    try:
-        return json.loads(body)
-    except (json.JSONDecodeError, ValueError) as e:
-        log.error("CST Toolbox returned non-JSON response: %s", body[:300])
-        raise toolkit.ValidationError(
-            {"cstoolbox": ["CST Toolbox API returned non-JSON response: %s" % e]}
-        )
+        # Brief backoff before retrying (no sleep after the last attempt).
+        if attempt < MAX_RETRIES:
+            delay = RETRY_BACKOFF_S[min(attempt - 1, len(RETRY_BACKOFF_S) - 1)]
+            time.sleep(delay)
+
+    raise toolkit.ValidationError({
+        "cstoolbox": [
+            "CST Toolbox API failed after %d attempts (%s)"
+            % (MAX_RETRIES, last_err_msg or "unknown error"),
+        ],
+    })
 
 
 def _cache_get(key):
