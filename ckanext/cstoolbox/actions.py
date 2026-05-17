@@ -680,7 +680,10 @@ def cstoolbox_survey_csv(context, data_dict):
         return {"csv_content": "", "row_count": 0,
                 "survey": {"name": survey.name, "title": survey.title}}
 
-    # Build a stable header order: identity/geometry/date first, then numeric, then rest.
+    # Build a stable header order: id/identity/geometry/date first, then
+    # numeric, then rest. The leading `id` column lets TerriaJS auto-detect
+    # it as the feature identifier — without it, Terria treats every row at
+    # the same (lat, lon) as a separate point and the map gets noisy.
     first = rows[0]
     keys = list(first.keys())
     priority = [
@@ -689,7 +692,7 @@ def cstoolbox_survey_csv(context, data_dict):
         survey.lat_field, survey.lon_field,
     ]
     seen = set()
-    ordered = []
+    ordered = ["id"]  # synthesised below — never a real upstream column
     for k in priority:
         if k in keys and k not in seen:
             ordered.append(k); seen.add(k)
@@ -697,14 +700,32 @@ def cstoolbox_survey_csv(context, data_dict):
         if k not in seen and k not in _META_COLUMNS:
             ordered.append(k); seen.add(k)
 
+    site_key = survey.site_field
+    lat_key = survey.lat_field
+    lon_key = survey.lon_field
+
+    def _row_id(r):
+        site = r.get(site_key)
+        if site not in (None, ""):
+            return str(site)
+        # Fallback: bucket by rounded coordinate so repeated samples at the
+        # same spot still group together.
+        lat = _safe_float(r.get(lat_key))
+        lon = _safe_float(r.get(lon_key))
+        if lat is not None and lon is not None:
+            return "%.5f,%.5f" % (lat, lon)
+        return ""
+
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow(ordered)
-    lat_key = survey.lat_field
-    lon_key = survey.lon_field
     for row in rows:
+        row_id = _row_id(row)
         out = []
         for k in ordered:
+            if k == "id":
+                out.append(row_id)
+                continue
             v = row.get(k, "")
             if v is None:
                 out.append("")
@@ -1073,7 +1094,11 @@ def cstoolbox_collection_csv(context, data_dict):
     coll_data = cstoolbox_collection_show(context, data_dict)
     toolkit.check_access("cstoolbox_collection_csv", context, data_dict)
 
-    BASE_COLS = ["_survey", "_survey_title", "_site",
+    # ``id`` is the first column so TerriaJS auto-detects it as the
+    # feature identifier and groups repeat observations at the same site
+    # into one map point with a time series. We namespace by survey to
+    # avoid two surveys colliding on a shared site name.
+    BASE_COLS = ["id", "_survey", "_survey_title", "_site",
                  "latitude", "longitude", "date", "time"]
 
     # First pass: collect rows + survey metadata so we can compute the
@@ -1112,10 +1137,20 @@ def cstoolbox_collection_csv(context, data_dict):
             if lat is None or lon is None:
                 continue  # Terria can't render rows without geometry
 
+            survey_name = survey_dict.get("name", "")
+            site_value = row.get(site_field) or ""
+            # Stable, human-readable id: "<survey>:<site>" when both exist,
+            # falling back to "<survey>:<lat>,<lon>" for siteless rows.
+            if site_value:
+                row_id = "%s:%s" % (survey_name, site_value)
+            else:
+                row_id = "%s:%.5f,%.5f" % (survey_name, lat, lon)
+
             out_row = {
-                "_survey": survey_dict.get("name", ""),
+                "id": row_id,
+                "_survey": survey_name,
                 "_survey_title": survey_dict.get("title", ""),
-                "_site": row.get(site_field) or "",
+                "_site": site_value,
                 "latitude": lat,
                 "longitude": lon,
                 "date": row.get(date_field) or "",
