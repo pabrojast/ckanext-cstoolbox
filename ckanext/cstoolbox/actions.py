@@ -69,6 +69,23 @@ def _is_number(value):
         return False
 
 
+def _safe_float(value):
+    """Coerce *value* to a finite ``float`` or return ``None``.
+
+    Rejects NaN/±Infinity (which crash TerriaJS when fed as lat/lon) and
+    empty/garbage input. Used to harden every geometry path.
+    """
+    if value is None or value == "":
+        return None
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    if f != f or f == float("inf") or f == float("-inf"):
+        return None
+    return f
+
+
 def _looks_like_iso_date(value):
     if not isinstance(value, str):
         return False
@@ -497,14 +514,18 @@ def _row_iso_timestamp(row, survey):
 
 
 def _row_coords(row, survey):
-    lat = row.get(survey.lat_field)
-    lon = row.get(survey.lon_field)
+    """Return ``[lon, lat]`` for a row, or ``None`` if not renderable.
+
+    Filters NaN, ±Infinity, and out-of-range values — any of which would
+    crash TerriaJS / Leaflet downstream.
+    """
+    lat = _safe_float(row.get(survey.lat_field))
+    lon = _safe_float(row.get(survey.lon_field))
     if lat is None or lon is None:
         return None
-    try:
-        return [float(lon), float(lat)]
-    except (TypeError, ValueError):
+    if lat < -90 or lat > 90 or lon < -180 or lon > 180:
         return None
+    return [lon, lat]
 
 
 def _clean_props(row, survey, time_property):
@@ -679,8 +700,22 @@ def cstoolbox_survey_csv(context, data_dict):
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow(ordered)
+    lat_key = survey.lat_field
+    lon_key = survey.lon_field
     for row in rows:
-        writer.writerow([row.get(k, "") if row.get(k) is not None else "" for k in ordered])
+        out = []
+        for k in ordered:
+            v = row.get(k, "")
+            if v is None:
+                out.append("")
+                continue
+            # Sanitise lat/lon so TerriaJS never sees NaN/Inf cells.
+            if k == lat_key or k == lon_key:
+                f = _safe_float(v)
+                out.append("" if f is None else f)
+                continue
+            out.append(v)
+        writer.writerow(out)
 
     return {
         "csv_content": buf.getvalue(),
@@ -1016,13 +1051,36 @@ def cstoolbox_collection_geojson(context, data_dict):
 
 
 def cstoolbox_collection_csv(context, data_dict):
-    """CSV with one block per survey, separated by blank rows."""
+    """Single, uniform CSV for a collection — Terria-friendly.
+
+    The previous implementation concatenated one CSV block per survey with
+    blank lines and ``# Survey:`` comment headers. TerriaJS' CSV catalog
+    parser does not understand that; it reads every row against the first
+    header, so the comment + secondary headers are parsed as garbage data
+    with NaN coordinates and the renderer crashes.
+
+    The new shape:
+      - one header row
+      - columns: ``_survey, _survey_title, _site, latitude, longitude,
+        date, time, <numeric measurements alphabetically>,
+        <other columns alphabetically>``
+      - lat/lon coerced to clean floats; rows with invalid coords are dropped
+      - no blank lines, no comments
+      - each survey's site column (which differs by view: ``site`` vs
+        ``site_name``) is normalised into ``_site`` for cross-survey
+        colour-by support
+    """
     coll_data = cstoolbox_collection_show(context, data_dict)
     toolkit.check_access("cstoolbox_collection_csv", context, data_dict)
 
-    out = io.StringIO()
-    writer = csv.writer(out)
-    first_block = True
+    BASE_COLS = ["_survey", "_survey_title", "_site",
+                 "latitude", "longitude", "date", "time"]
+
+    # First pass: collect rows + survey metadata so we can compute the
+    # full superset of columns.
+    rows_out = []  # list of dicts already augmented with _survey/_site/etc.
+    extra_columns = set()  # all upstream column names we've seen
+
     for survey_dict in coll_data.get("surveys_detail", []):
         sub_data = {
             "id": survey_dict["id"],
@@ -1031,19 +1089,76 @@ def cstoolbox_collection_csv(context, data_dict):
             "end": data_dict.get("end"),
         }
         try:
-            block = cstoolbox_survey_csv(context, sub_data)
+            block = cstoolbox_survey_data(context, sub_data)
         except Exception as e:
-            log.warning("cstoolbox: collection csv skipped '%s': %s",
-                        survey_dict.get("name"), e)
+            log.warning(
+                "cstoolbox: collection csv skipped '%s': %s",
+                survey_dict.get("name"), e,
+            )
             continue
-        if not first_block:
-            out.write("\n")
-        writer.writerow(["# Survey: %s" % survey_dict["title"]])
-        out.write(block.get("csv_content", ""))
-        first_block = False
+
+        survey_meta = block.get("survey", {})
+        site_field = survey_meta.get("site_field") or "site_name"
+        lat_field = survey_meta.get("lat_field") or "latitude"
+        lon_field = survey_meta.get("lon_field") or "longitude"
+        date_field = survey_meta.get("date_field") or "obs_date"
+        time_field = "sample_time" if "sample_time" in (
+            block.get("rows", [{}])[0] if block.get("rows") else {}
+        ) else "time"
+
+        for row in block.get("rows", []):
+            lat = _safe_float(row.get(lat_field))
+            lon = _safe_float(row.get(lon_field))
+            if lat is None or lon is None:
+                continue  # Terria can't render rows without geometry
+
+            out_row = {
+                "_survey": survey_dict.get("name", ""),
+                "_survey_title": survey_dict.get("title", ""),
+                "_site": row.get(site_field) or "",
+                "latitude": lat,
+                "longitude": lon,
+                "date": row.get(date_field) or "",
+                "time": row.get(time_field) or "",
+            }
+            # Copy through every other column (skip meta/blob columns).
+            for k, v in row.items():
+                if k in _META_COLUMNS:
+                    continue
+                if k in (lat_field, lon_field, date_field, time_field, site_field):
+                    continue
+                out_row[k] = v
+                extra_columns.add(k)
+            rows_out.append(out_row)
+
+    # Choose stable column order: base, then numeric measurements, then rest.
+    numeric_cols = []
+    other_cols = []
+    for col in sorted(extra_columns):
+        # A column is "numeric" if any non-empty value parses as a float.
+        is_num = False
+        for r in rows_out:
+            v = r.get(col)
+            if v is None or v == "":
+                continue
+            if isinstance(v, (int, float)) or _is_number(v):
+                is_num = True
+            break
+        (numeric_cols if is_num else other_cols).append(col)
+    headers = BASE_COLS + numeric_cols + other_cols
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(headers)
+    for r in rows_out:
+        writer.writerow([
+            "" if r.get(h) is None else r.get(h)
+            for h in headers
+        ])
 
     return {
-        "csv_content": out.getvalue(),
+        "csv_content": buf.getvalue(),
+        "row_count": len(rows_out),
         "collection": {
             "id": coll_data["id"],
             "name": coll_data["name"],
