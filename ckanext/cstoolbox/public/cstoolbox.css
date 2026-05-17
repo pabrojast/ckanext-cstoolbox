@@ -535,8 +535,10 @@
 /* Stat cards */
 .cst-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 0.7rem;
+  /* Prevent grid items from forcing the row wider than the parent. */
+  min-width: 0;
 }
 
 .cst-stat-card {
@@ -546,6 +548,11 @@
   padding: 0.9rem 1rem;
   text-align: center;
   box-shadow: var(--cst-shadow-sm);
+  /* Critical: grid children default to min-width:auto which respects content
+     width — making a single long string blow out the whole row. Setting it
+     to 0 lets the column shrink and ellipsis kick in. */
+  min-width: 0;
+  overflow: hidden;
 }
 
 .cst-stat-card .label {
@@ -555,6 +562,9 @@
   color: var(--cst-text-soft);
   margin-bottom: 0.3rem;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .cst-stat-card .value {
@@ -562,6 +572,9 @@
   font-weight: 700;
   color: var(--cst-blue-dark);
   line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .cst-stat-card .value.muted { color: var(--cst-text-soft); font-size: 0.95rem; font-weight: 500; }
 

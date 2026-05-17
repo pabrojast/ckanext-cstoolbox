@@ -163,6 +163,8 @@
         setLoading(false);
         if (data.error) { showError(data.error); return; }
         state.rows = data.rows || [];
+        // Reset detected secondary field so it re-evaluates on each refresh.
+        state.secondaryField = undefined;
         if (data.columns && data.columns.length) state.columns = data.columns;
         if (data.survey) state.survey = Object.assign({}, state.survey, data.survey);
         if (state.refreshDownloads) state.refreshDownloads();
@@ -197,14 +199,84 @@
     renderTable();
   }
 
+  // Auto-detect a useful "secondary" categorical column to facet by
+  // (e.g. member_state, country, school). Returns null if nothing fits.
+  // Cached on state so it stays stable across filter changes.
+  var SECONDARY_PREFERRED = [
+    'member_state', 'country', 'region', 'organisation', 'organization',
+    'school', 'team', 'sampling_group', 'student_group',
+  ];
+  function detectSecondaryField() {
+    if (state.secondaryField !== undefined) return state.secondaryField;
+    if (!state.rows.length) return null;
+    var siteField = state.survey.site_field;
+    var dateField = state.survey.date_field;
+    var latField = state.survey.lat_field;
+    var lonField = state.survey.lon_field;
+    var skip = new Set([
+      siteField, dateField, latField, lonField,
+      'id', 'timestamp', 'time', 'sample_time', '_uri', '_core_uri',
+      'comment', 'weather', 'instrument',
+    ]);
+    function uniqueCount(key) {
+      var seen = new Set();
+      for (var i = 0; i < state.rows.length; i++) {
+        var v = state.rows[i][key];
+        if (v !== null && v !== undefined && v !== '') seen.add(v);
+      }
+      return seen.size;
+    }
+    function isStringy(key) {
+      for (var i = 0; i < state.rows.length; i++) {
+        var v = state.rows[i][key];
+        if (v === null || v === undefined) continue;
+        return typeof v === 'string';
+      }
+      return false;
+    }
+    // 1. Try preferred names first.
+    for (var i = 0; i < SECONDARY_PREFERRED.length; i++) {
+      var k = SECONDARY_PREFERRED[i];
+      if (state.rows[0].hasOwnProperty(k) && !skip.has(k)) {
+        var c = uniqueCount(k);
+        if (c >= 1 && c <= 50) { state.secondaryField = k; return k; }
+      }
+    }
+    // 2. Otherwise pick the lowest-cardinality string column with 2..30 values.
+    var bestK = null, bestC = Infinity;
+    Object.keys(state.rows[0]).forEach(function (k) {
+      if (skip.has(k)) return;
+      if (!isStringy(k)) return;
+      var c = uniqueCount(k);
+      if (c >= 2 && c <= 30 && c < bestC) { bestK = k; bestC = c; }
+    });
+    state.secondaryField = bestK;
+    return bestK;
+  }
+
+  function humanizeFieldName(name) {
+    if (!name) return '';
+    return name.replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  }
+
+  function trimDate(value) {
+    if (!value) return '';
+    var s = String(value);
+    // Cut off any time component (T or space) so we don't blow out the stat card.
+    var sep = s.indexOf('T') !== -1 ? 'T' : ' ';
+    var idx = s.indexOf(sep);
+    return idx !== -1 ? s.slice(0, idx) : s;
+  }
+
   function filteredRows() {
     var siteField = state.survey.site_field || 'site_name';
+    var secondary = detectSecondaryField();
     var rows = state.rows;
     if (state.selectedSites.size > 0) {
       rows = rows.filter(function (r) { return state.selectedSites.has(r[siteField]); });
     }
-    if (state.selectedStates.size > 0) {
-      rows = rows.filter(function (r) { return state.selectedStates.has(r.member_state); });
+    if (secondary && state.selectedStates.size > 0) {
+      rows = rows.filter(function (r) { return state.selectedStates.has(r[secondary]); });
     }
     return rows;
   }
@@ -212,30 +284,39 @@
   function renderStats() {
     var rows = filteredRows();
     var siteField = state.survey.site_field || 'site_name';
+    var secondary = detectSecondaryField();
     var sites = new Set();
     var states = new Set();
     var lastDate = '';
     rows.forEach(function (r) {
       if (r[siteField]) sites.add(r[siteField]);
-      if (r.member_state) states.add(r.member_state);
+      if (secondary && r[secondary]) states.add(r[secondary]);
       var d = r[state.survey.date_field || 'obs_date'];
       if (d && String(d) > lastDate) lastDate = String(d);
     });
     var o = $('statObs'); if (o) o.textContent = rows.length;
     var s = $('statSites'); if (s) s.textContent = sites.size;
-    var ms = $('statStates'); if (ms) ms.textContent = states.size;
-    var l = $('statLast'); if (l) l.textContent = lastDate || '—';
+    var ms = $('statStates'); if (ms) ms.textContent = secondary ? states.size : '—';
+    var msl = document.querySelector('.cst-stat-card .label[data-stat="secondary"]');
+    if (msl) msl.textContent = secondary ? humanizeFieldName(secondary) : '—';
+    var l = $('statLast'); if (l) l.textContent = lastDate ? trimDate(lastDate) : '—';
   }
 
   function renderFacets() {
     var siteField = state.survey.site_field || 'site_name';
+    var secondary = detectSecondaryField();
     var sites = {};
     var states = {};
     state.rows.forEach(function (r) {
       if (r[siteField]) sites[r[siteField]] = (sites[r[siteField]] || 0) + 1;
-      if (r.member_state) states[r.member_state] = (states[r.member_state] || 0) + 1;
+      if (secondary && r[secondary]) states[r[secondary]] = (states[r[secondary]] || 0) + 1;
     });
     renderChips($('cstSiteChips'), sites, state.selectedSites);
+    // Update the secondary chip section header + container
+    var secLabel = document.querySelector('[data-facet="secondary"] strong');
+    if (secLabel) secLabel.textContent = secondary ? humanizeFieldName(secondary) : '';
+    var secContainer = document.querySelector('[data-facet="secondary"]');
+    if (secContainer) secContainer.style.display = secondary ? '' : 'none';
     renderChips($('cstStateChips'), states, state.selectedStates);
   }
 
