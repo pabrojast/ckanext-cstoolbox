@@ -233,13 +233,31 @@
   font-weight: 500;
 }
 
-.cst-btn-primary {
+/* Blue gradient primary button.
+   Selectors use .btn.cst-btn-primary (specificity 0,2,0) to outrank
+   the upstream theme's `.btn` color rule on text + icons. */
+.btn.cst-btn-primary,
+.btn.cst-btn-primary:link,
+.btn.cst-btn-primary:visited {
   background: linear-gradient(135deg, var(--cst-blue) 0%, var(--cst-blue-light) 100%);
   color: #fff;
   border: none;
   box-shadow: var(--cst-shadow-sm);
 }
-.cst-btn-primary:hover { color: #fff; box-shadow: var(--cst-shadow-md); transform: translateY(-1px); }
+.btn.cst-btn-primary:hover,
+.btn.cst-btn-primary:focus,
+.btn.cst-btn-primary:active {
+  color: #fff;
+  box-shadow: var(--cst-shadow-md);
+  transform: translateY(-1px);
+  text-decoration: none;
+}
+/* Make sure FontAwesome icons (and any nested text) inherit white. */
+.btn.cst-btn-primary i,
+.btn.cst-btn-primary span,
+.btn.cst-btn-primary svg {
+  color: inherit;
+}
 
 /* ══════════════════════════════════════════════════════
    Form
@@ -498,7 +516,10 @@
   font-size: 0.85rem;
 }
 
-.cst-apply-btn {
+button.cst-apply-btn,
+button.cst-apply-btn:hover,
+button.cst-apply-btn:focus,
+button.cst-apply-btn:active {
   background: linear-gradient(135deg, var(--cst-blue) 0%, var(--cst-blue-light) 100%);
   color: #fff;
   border: none;
@@ -509,8 +530,8 @@
   cursor: pointer;
   box-shadow: var(--cst-shadow-sm);
 }
-.cst-apply-btn:hover { box-shadow: var(--cst-shadow-md); transform: translateY(-1px); }
-.cst-apply-btn i { margin-right: 0.3rem; }
+button.cst-apply-btn:hover { box-shadow: var(--cst-shadow-md); transform: translateY(-1px); }
+button.cst-apply-btn i { margin-right: 0.3rem; color: inherit; }
 
 /* Sites + measurements multi-filter row */
 .cst-facet-row {
