@@ -438,7 +438,13 @@
   display: grid;
   grid-template-rows: auto auto auto auto;
   gap: 1rem;
+  /* Force this single-column grid to never exceed the column track width.
+     Without min-width:0, a wide child (Chart.js canvas, data table) would
+     blow the entire dashboard wider than the viewport. */
+  min-width: 0;
+  max-width: 100%;
 }
+.cst-dash > * { min-width: 0; max-width: 100%; }
 
 .cst-dash-header {
   display: flex;
@@ -602,12 +608,13 @@ button.cst-apply-btn i { margin-right: 0.3rem; color: inherit; }
 /* Two-column section: map + charts */
 .cst-dash-main {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 1rem;
+  min-width: 0;
 }
 
 @media (max-width: 1100px) {
-  .cst-dash-main { grid-template-columns: 1fr; }
+  .cst-dash-main { grid-template-columns: minmax(0, 1fr); }
 }
 
 .cst-dash-panel {
@@ -619,6 +626,7 @@ button.cst-apply-btn i { margin-right: 0.3rem; color: inherit; }
   display: flex;
   flex-direction: column;
   min-width: 0;
+  overflow: hidden;
 }
 
 .cst-dash-panel-header {
@@ -648,11 +656,13 @@ button.cst-apply-btn i { margin-right: 0.3rem; color: inherit; }
 
 .cst-charts-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
   max-height: 580px;
   overflow-y: auto;
+  overflow-x: hidden;
   padding-right: 0.3rem;
+  min-width: 0;
 }
 
 .cst-chart-card {
@@ -662,6 +672,8 @@ button.cst-apply-btn i { margin-right: 0.3rem; color: inherit; }
   padding: 0.7rem 0.8rem;
   position: relative;
   min-height: 220px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .cst-chart-card .title {
@@ -676,7 +688,16 @@ button.cst-apply-btn i { margin-right: 0.3rem; color: inherit; }
 
 .cst-chart-card .title small { color: var(--cst-text-soft); font-weight: 400; }
 
-.cst-chart-card canvas { width: 100% !important; height: 180px !important; }
+.cst-chart-card canvas {
+  width: 100% !important;
+  height: 180px !important;
+  /* Chart.js sets explicit width/height HTML attrs at init time. The CSS
+     override above forces visual scaling, but max-width below keeps the
+     element from ever exceeding the parent — essential if the parent is
+     a grid track that hasn't finalised its width yet. */
+  max-width: 100% !important;
+  display: block;
+}
 
 /* Data table */
 .cst-table-section {
@@ -685,6 +706,8 @@ button.cst-apply-btn i { margin-right: 0.3rem; color: inherit; }
   border-radius: 12px;
   padding: 1rem;
   box-shadow: var(--cst-shadow-sm);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .cst-table-header {
@@ -714,10 +737,16 @@ button.cst-apply-btn i { margin-right: 0.3rem; color: inherit; }
   overflow: auto;
   border: 1px solid var(--cst-border);
   border-radius: 8px;
+  /* Critical so the wrap (not the page) is what scrolls horizontally when
+     the table has many columns. */
+  max-width: 100%;
 }
 
 .cst-table {
-  width: 100%;
+  /* Don't force the table to fill the wrap if its content is wide — let it
+     overflow horizontally inside the wrap so the wrap can scroll. */
+  width: auto;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 0.85rem;
 }
